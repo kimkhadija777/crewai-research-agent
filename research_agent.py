@@ -1,150 +1,239 @@
 import os
 
-from crewai import Agent, Crew, LLM, Process, Task
-from search_tool import DuckDuckGoSearchTool
+from crewai import Agent, Crew, Process, Task, LLM
+from ddgs import DDGS
 
 
-# Current Groq model IDs
+# ---------------------------------------------------------
+# Current Groq models
+# ---------------------------------------------------------
+
 SUPPORTED_MODELS = {
     "GPT OSS 120B": "openai/gpt-oss-120b",
     "Qwen 3.8 27B": "qwen/qwen3.8-27b",
 }
 
 
-def create_research_crew(model_name: str):
-    """
-    Create a single-agent research crew.
+# ---------------------------------------------------------
+# DuckDuckGo search
+# ---------------------------------------------------------
 
-    Architecture:
-        Streamlit
-            ↓
-        CrewAI
-            ↓
-        Single Research Agent
-            ↓
-        DuckDuckGo
-            ↓
-        Groq LLM
+def search_web(query: str, max_results: int = 8) -> str:
+    """
+    Search DuckDuckGo and return formatted web results.
+
+    The search is executed by Python BEFORE CrewAI runs.
+    Therefore CrewAI/Groq does not need to call a tool.
     """
 
-    # -------------------------------------------------
-    # 1. Get API key
-    # -------------------------------------------------
+    try:
+        results = DDGS().text(
+            query,
+            max_results=max_results
+        )
+
+        if not results:
+            return "No web results were found."
+
+        formatted_results = []
+
+        for index, result in enumerate(results, start=1):
+
+            title = result.get(
+                "title",
+                "Untitled"
+            )
+
+            body = result.get(
+                "body",
+                "No description available."
+            )
+
+            url = result.get(
+                "href",
+                ""
+            )
+
+            formatted_results.append(
+                f"""
+SOURCE {index}
+Title: {title}
+Description: {body}
+URL: {url}
+"""
+            )
+
+        return "\n".join(formatted_results)
+
+    except Exception as exc:
+
+        return (
+            "DuckDuckGo search failed.\n"
+            f"Error: {exc}"
+        )
+
+
+# ---------------------------------------------------------
+# Create CrewAI Research Crew
+# ---------------------------------------------------------
+
+def create_research_crew(
+    model_name: str,
+    topic: str
+):
+    """
+    Creates a single-agent CrewAI research system.
+
+    Flow:
+
+    User Topic
+        ↓
+    DuckDuckGo Search
+        ↓
+    Search Results
+        ↓
+    Single CrewAI Agent
+        ↓
+    Groq
+        ↓
+    Research Report
+    """
+
+    # -----------------------------------------------------
+    # API key
+    # -----------------------------------------------------
 
     api_key = os.getenv("GROQ_API_KEY")
 
     if not api_key:
         raise ValueError(
             "GROQ_API_KEY is missing. "
-            "Please add GROQ_API_KEY in Streamlit Secrets."
+            "Please add it to Streamlit Secrets."
         )
 
-    # -------------------------------------------------
-    # 2. Clean and validate model
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # Clean model name
+    # -----------------------------------------------------
 
     model_name = str(model_name).strip()
 
-    # Prevent the old incorrect model format
+    # Handle accidental short model name
     if model_name == "gpt-oss-120b":
         model_name = "openai/gpt-oss-120b"
 
-    if model_name == "qwen3.6-27b":
-        raise ValueError(
-            "qwen/qwen3.6-27b has been deprecated by Groq. "
-            "Please select qwen/qwen3.8-27b."
-        )
+    # -----------------------------------------------------
+    # Validate model
+    # -----------------------------------------------------
 
     if model_name not in SUPPORTED_MODELS.values():
+
         raise ValueError(
-            f"Unsupported Groq model: {model_name}"
+            f"Unsupported Groq model: {model_name}\n\n"
+            f"Supported models:\n"
+            f"{list(SUPPORTED_MODELS.values())}"
         )
 
-    # -------------------------------------------------
-    # 3. Create Groq LLM
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # SEARCH FIRST
+    # -----------------------------------------------------
+
+    search_results = search_web(
+        query=topic,
+        max_results=8
+    )
+
+    # -----------------------------------------------------
+    # Groq LLM
+    # -----------------------------------------------------
 
     llm = LLM(
-        model=model_name,
-        provider="openai",
+        model=f"groq/{model_name}",
         api_key=api_key,
-        base_url="https://api.groq.com/openai/v1",
         temperature=0.2,
     )
 
-    # -------------------------------------------------
-    # 4. Create DuckDuckGo tool
-    # -------------------------------------------------
-
-    search_tool = DuckDuckGoSearchTool()
-
-    # -------------------------------------------------
-    # 5. Single Research Agent
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # Single Agent
+    #
+    # IMPORTANT:
+    # No tools are attached to the agent.
+    #
+    # This prevents the previous:
+    # "Tool choice is none, but model called a tool"
+    # error.
+    # -----------------------------------------------------
 
     researcher = Agent(
         role="AI Research Analyst",
 
         goal=(
-            "Research the requested topic using "
-            "web search and produce an accurate, "
-            "well-structured research report."
+            "Analyze the provided web research and "
+            "produce an accurate, structured research "
+            "report about the requested topic."
         ),
 
         backstory=(
             "You are a careful research analyst. "
-            "Before writing, you search the web for "
-            "relevant information. You use reliable "
-            "sources, avoid fabricated facts, and "
-            "include the URLs of sources used."
+            "You analyze information gathered from "
+            "web sources and create clear factual reports. "
+            "You never invent sources, URLs, statistics, "
+            "or facts."
         ),
-
-        tools=[search_tool],
 
         llm=llm,
 
         allow_delegation=False,
 
-        max_iter=6,
+        max_iter=4,
 
         verbose=False,
     )
 
-    # -------------------------------------------------
-    # 6. Research Task
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # Research Task
+    # -----------------------------------------------------
 
     research_task = Task(
-        description="""
-Research the following topic:
+
+        description=f"""
+Research Topic:
 
 {topic}
 
+The following information was collected from
+DuckDuckGo before you started:
+
+---------------- WEB SEARCH RESULTS ----------------
+
+{search_results}
+
+---------------- END WEB RESULTS ----------------
+
 IMPORTANT INSTRUCTIONS:
 
-1. Search the web before writing the report.
+1. Analyze the web search results provided above.
 
-2. Use DuckDuckGo for web research.
+2. Do NOT attempt to call any external tool.
 
-3. Perform multiple searches when necessary.
+3. Do NOT invent URLs.
 
-4. Look for recent and reliable information.
+4. Do NOT invent statistics or facts.
 
-5. Do not invent facts, statistics, citations,
-   or URLs.
+5. Use the provided sources as evidence.
 
-6. Use information returned by the search tool.
+6. If the search results do not contain enough
+   information for a claim, say that the available
+   sources were insufficient.
 
-7. Include source URLs for important information.
+7. Keep the report factual and easy to understand.
 
-8. Keep the report factual and easy to understand.
+8. Mention the source URL next to important claims
+   where appropriate.
 
-9. Clearly distinguish facts from opinions or claims.
+9. At the end, provide a Sources section containing
+   the URLs actually present in the search results.
 
-10. Do not mention these instructions in the final report.
-
-Write the final report in Markdown using exactly
-these sections:
+Write the final report using this structure:
 
 # Executive Summary
 
@@ -161,24 +250,23 @@ these sections:
 # Conclusion
 
 # Sources
-
-Under # Sources, provide a numbered list of the
-important sources used, including their URLs.
 """,
 
         expected_output=(
-            "A complete factual research report in Markdown "
-            "with clearly organized sections and source URLs."
+            "A complete, factual Markdown research report "
+            "based on the supplied DuckDuckGo search results, "
+            "including a Sources section with URLs."
         ),
 
         agent=researcher,
     )
 
-    # -------------------------------------------------
-    # 7. Single-Agent Crew
-    # -------------------------------------------------
+    # -----------------------------------------------------
+    # Single-Agent Crew
+    # -----------------------------------------------------
 
     crew = Crew(
+
         agents=[researcher],
 
         tasks=[research_task],
