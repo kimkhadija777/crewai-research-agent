@@ -7,43 +7,49 @@ from search_tool import DuckDuckGoSearchTool
 
 def create_research_crew(model_name: str):
     """
-    Creates a single-agent CrewAI research crew.
+    Create a single-agent research crew.
     """
 
-    groq_api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
 
-    if not groq_api_key:
+    if not api_key:
         raise ValueError(
-            "GROQ_API_KEY is not configured."
+            "GROQ_API_KEY is missing."
         )
 
     llm = LLM(
         model=f"groq/{model_name}",
-        api_key=groq_api_key,
+        api_key=api_key,
         temperature=0.2,
     )
 
     search_tool = DuckDuckGoSearchTool()
 
+    # --------------------------------------------------
+    # SINGLE AGENT
+    # --------------------------------------------------
+
     researcher = Agent(
         role="AI Research Analyst",
 
         goal=(
-            "Research the given topic carefully using web search, "
-            "identify reliable and relevant information, "
-            "cross-check important claims, and produce a clear "
+            "Research the user's topic using web search, "
+            "analyze the available information, cross-check "
+            "important claims, and produce a factual "
             "well-structured research report."
         ),
 
         backstory=(
-            "You are a careful research analyst who specializes in "
-            "finding, organizing, and explaining information. "
-            "You search the web before writing the report, prefer "
-            "credible sources, avoid unsupported claims, and clearly "
-            "separate established facts from uncertain information."
+            "You are an experienced research analyst. "
+            "You carefully search for relevant information, "
+            "prefer credible sources, compare information "
+            "from multiple sources, and clearly identify "
+            "uncertainty or conflicting information."
         ),
 
-        tools=[search_tool],
+        tools=[
+            search_tool
+        ],
 
         llm=llm,
 
@@ -54,76 +60,141 @@ def create_research_crew(model_name: str):
         max_iter=8,
     )
 
+    # --------------------------------------------------
+    # RESEARCH TASK
+    # --------------------------------------------------
+
     research_task = Task(
         description="""
-        Research the following topic:
+Research the following topic:
 
-        {topic}
+{topic}
 
-        Follow this process:
+Your job is to conduct web-based research and create
+a useful research report.
 
-        1. Understand the research topic.
-        2. Search the web using the DuckDuckGo search tool.
-        3. Search using multiple relevant queries when necessary.
-        4. Gather information from several sources.
-        5. Prefer authoritative, reputable, and primary sources
-           when available.
-        6. Compare information across sources.
-        7. Do not invent facts, statistics, quotations, or sources.
-        8. If information is uncertain or conflicting, explicitly
-           mention the uncertainty.
-        9. Write a well-organized research report.
+Follow these steps:
 
-        The final report should contain:
+1. Understand the topic.
 
-        # Research Report
+2. Break the topic into useful search questions.
 
-        ## 1. Executive Summary
-        Give a concise overview of the topic.
+3. Use the DuckDuckGo Web Search tool to search for
+   relevant information.
 
-        ## 2. Introduction
-        Explain the topic and why it matters.
+4. Perform multiple searches when necessary.
 
-        ## 3. Key Findings
-        Present the major findings in clear sections.
+5. Look for information from several sources.
 
-        ## 4. Detailed Analysis
-        Explain the important concepts, evidence, examples,
-        developments, advantages/disadvantages, or other relevant
-        aspects depending on the topic.
+6. Prefer reliable sources such as:
+   - official organizations
+   - universities
+   - research institutions
+   - government websites
+   - established publications
+   - primary sources
 
-        ## 5. Current Developments
-        Include recent information when relevant.
+7. Compare information from different sources.
 
-        ## 6. Conclusion
-        Summarize the main findings without adding unsupported claims.
+8. Do not invent facts.
 
-        ## 7. Sources
-        List the sources used.
-        Include the source title and URL.
+9. Do not invent statistics.
 
-        Important:
-        - Use only information supported by the search results.
-        - Do not fabricate URLs.
-        - Do not claim that you visited a page if the search tool
-          only returned search-result information.
-        - Keep the report factual and readable.
-        """,
+10. Do not invent quotations.
+
+11. Do not invent source URLs.
+
+12. If sources disagree, explain the disagreement.
+
+13. If information cannot be verified from the search
+    results, clearly say that it could not be verified.
+
+14. Use recent information when the topic requires it.
+
+15. Write the final report in clear Markdown.
+
+The report must contain:
+
+# Research Report
+
+## Executive Summary
+
+Provide a concise overview of the research.
+
+## Introduction
+
+Explain the topic and its importance.
+
+## Key Findings
+
+Present the most important findings.
+
+## Detailed Analysis
+
+Explain the topic in depth using the information
+found during research.
+
+Use appropriate subsections when useful.
+
+## Current Developments
+
+Discuss recent developments when relevant.
+
+## Challenges and Limitations
+
+Discuss important limitations, uncertainties,
+or challenges.
+
+## Conclusion
+
+Summarize the main findings.
+
+## Sources
+
+List the sources used during research.
+
+For every source include:
+
+- Source title
+- URL
+
+IMPORTANT:
+
+Only include URLs returned by the search tool.
+
+Do not fabricate URLs.
+
+Do not claim that you directly visited or verified
+a webpage unless the available tool actually provided
+that information.
+""",
 
         expected_output=(
-            "A comprehensive, factual, well-structured research report "
-            "with an executive summary, introduction, key findings, "
-            "detailed analysis, current developments, conclusion, "
-            "and a list of source URLs."
+            "A factual, well-structured Markdown research "
+            "report containing an executive summary, "
+            "introduction, key findings, detailed analysis, "
+            "current developments, challenges and limitations, "
+            "conclusion, and source URLs."
         ),
 
         agent=researcher,
     )
 
+    # --------------------------------------------------
+    # CREW
+    # --------------------------------------------------
+
     crew = Crew(
-        agents=[researcher],
-        tasks=[research_task],
+        agents=[
+            researcher
+        ],
+
+        tasks=[
+            research_task
+        ],
+
         process=Process.sequential,
+
         verbose=False,
     )
 
