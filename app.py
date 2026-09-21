@@ -37,12 +37,18 @@ with st.sidebar:
     st.header("⚙️ Settings")
 
     model_name = st.selectbox(
-        "Choose Groq Model",
-        [
-            "openai/gpt-oss-120b",
-            "qwen/qwen3.8-27b",
-        ],
+    "Choose Groq Model",
+    [
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+    ],
     )
+        
+        
+            
+            
+        
+    
 
     st.markdown("### 🧠 Architecture")
 
