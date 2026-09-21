@@ -1,5 +1,4 @@
 import os
-from typing import List, Dict
 
 from openai import OpenAI
 from crewai import Agent, Crew, Process, Task
@@ -8,12 +7,12 @@ from search_tool import search_web
 
 
 # =========================================================
-# CURRENT GROQ MODELS
+# GROQ MODELS
 # =========================================================
 
 SUPPORTED_MODELS = {
     "GPT OSS 120B": "openai/gpt-oss-120b",
-    "Qwen 3.6 27B": "qwen/qwen3.6-27b",
+    "Qwen3.6 27B": "qwen/qwen3.6-27b",
 }
 
 
@@ -23,11 +22,8 @@ SUPPORTED_MODELS = {
 
 def collect_web_research(
     topic: str,
-    max_results: int = 8
-) -> List[Dict]:
-    """
-    Search DuckDuckGo before the CrewAI agent starts.
-    """
+    max_results_per_query: int = 6
+) -> list:
 
     queries = [
         topic,
@@ -41,82 +37,152 @@ def collect_web_research(
     for query in queries:
 
         results = search_web(
-            query,
-            max_results=max_results
+            query=query,
+            max_results=max_results_per_query
         )
 
         for result in results:
 
-            url = result.get("url", "").strip()
+            url = result.get(
+                "url",
+                ""
+            ).strip()
 
             if url and url not in seen_urls:
 
                 seen_urls.add(url)
-                all_results.append(result)
 
-    return all_results[:20]
+                all_results.append(
+                    result
+                )
+
+    return all_results[:15]
 
 
 # =========================================================
-# FORMAT SEARCH RESULTS
+# FORMAT SOURCES
 # =========================================================
 
-def format_search_results(
-    results: List[Dict]
+def format_sources(
+    results: list
 ) -> str:
 
     if not results:
-        return "No web search results were found."
+        return (
+            "No web sources were found."
+        )
 
-    formatted = []
+    output = []
 
     for index, result in enumerate(
         results,
         start=1
     ):
 
-        formatted.append(
+        output.append(
             f"""
 SOURCE {index}
 
 Title:
-{result.get("title", "Unknown")}
+{result.get("title", "")}
 
 Description:
-{result.get("body", "No description available.")}
+{result.get("body", "")}
 
 URL:
 {result.get("url", "")}
 """
         )
 
-    return "\n".join(formatted)
+    return "\n".join(output)
 
 
 # =========================================================
-# DIRECT GROQ CALL
+# DIRECT GROQ
 # =========================================================
 
 def call_groq(
     model_name: str,
-    system_prompt: str,
-    user_prompt: str
+    topic: str,
+    research: str,
+    crew_analysis: str
 ) -> str:
 
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv(
+        "GROQ_API_KEY"
+    )
 
     if not api_key:
 
         raise ValueError(
-            "GROQ_API_KEY is missing. "
-            "Please add it to Streamlit Secrets."
+            "GROQ_API_KEY is missing."
         )
 
-    # Direct Groq OpenAI-compatible client
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.groq.com/openai/v1"
+        base_url=(
+            "https://api.groq.com/openai/v1"
+        )
     )
+
+    system_prompt = """
+You are an expert research report writer.
+
+Create accurate, clear and structured reports.
+
+Use ONLY the supplied research sources.
+
+Never invent:
+- facts
+- statistics
+- citations
+- URLs
+
+If the supplied sources are insufficient,
+clearly state that limitation.
+
+Return Markdown.
+"""
+
+    user_prompt = f"""
+RESEARCH TOPIC:
+
+{topic}
+
+
+WEB RESEARCH:
+
+{research}
+
+
+CREWAI ANALYSIS:
+
+{crew_analysis}
+
+
+Create the final research report.
+
+Use exactly these sections:
+
+# Executive Summary
+
+# Introduction
+
+# Key Findings
+
+# Detailed Analysis
+
+# Current Developments
+
+# Challenges and Limitations
+
+# Conclusion
+
+# Sources
+
+Under Sources, list the actual URLs from
+the supplied web research.
+"""
 
     response = client.chat.completions.create(
         model=model_name,
@@ -137,30 +203,33 @@ def call_groq(
         max_tokens=6000
     )
 
-    content = response.choices[0].message.content
+    result = response.choices[0].message.content
 
-    if not content:
+    if not result:
+
         raise RuntimeError(
             "Groq returned an empty response."
         )
 
-    return content
+    return result
 
 
 # =========================================================
-# CREWAI SINGLE AGENT
+# MAIN FUNCTION
 # =========================================================
 
-def create_research_crew(
+def generate_report(
     model_name: str,
     topic: str
-):
+) -> str:
 
     # -----------------------------------------------------
-    # Validate API key
+    # API key
     # -----------------------------------------------------
 
-    if not os.getenv("GROQ_API_KEY"):
+    if not os.getenv(
+        "GROQ_API_KEY"
+    ):
 
         raise ValueError(
             "GROQ_API_KEY is missing."
@@ -170,250 +239,123 @@ def create_research_crew(
     # Validate model
     # -----------------------------------------------------
 
-    if model_name not in SUPPORTED_MODELS.values():
+    if model_name not in (
+        SUPPORTED_MODELS.values()
+    ):
 
         raise ValueError(
             f"Unsupported model: {model_name}"
         )
 
     # -----------------------------------------------------
-    # Collect web information first
+    # STEP 1 — DuckDuckGo
     # -----------------------------------------------------
 
-    search_results = collect_web_research(
+    web_results = collect_web_research(
         topic
     )
 
-    research_context = format_search_results(
-        search_results
+    if not web_results:
+
+        raise RuntimeError(
+            "DuckDuckGo returned no search results. "
+            "Please try another topic."
+        )
+
+    research_context = format_sources(
+        web_results
     )
 
     # -----------------------------------------------------
-    # Create CrewAI Agent
-    #
-    # The agent does NOT have a tool.
-    #
-    # This prevents Groq tool_choice errors.
+    # STEP 2 — CrewAI Single Agent
     # -----------------------------------------------------
 
     researcher = Agent(
 
-        role="AI Research Analyst",
+        role="Research Analyst",
 
         goal=(
             "Analyze the provided web research "
-            "and create an accurate, structured "
-            "research report."
+            "and identify the most important "
+            "facts and findings."
         ),
 
         backstory=(
-            "You are an experienced research analyst "
-            "who carefully analyzes information collected "
-            "from web sources. You never fabricate facts "
-            "or sources."
+            "You are a careful research analyst. "
+            "You analyze supplied sources without "
+            "inventing information."
         ),
 
-        # No tools here
         tools=[],
 
         allow_delegation=False,
 
-        verbose=False,
+        max_iter=1,
 
-        max_iter=1
+        verbose=False
     )
 
-    # -----------------------------------------------------
-    # Task
-    # -----------------------------------------------------
-
-    research_task = Task(
+    task = Task(
 
         description=f"""
-Research Topic:
+Analyze this research topic:
 
 {topic}
 
-The application has already searched DuckDuckGo.
-
-Here are the collected web sources:
-
-================ WEB RESEARCH ================
+Here are the web sources already collected:
 
 {research_context}
 
-================ END WEB RESEARCH ================
+Identify:
 
-Your job is to analyze these sources and create
-a professional research report.
+1. Main findings
+2. Important facts
+3. Relevant developments
+4. Benefits
+5. Challenges
+6. Important source information
 
-IMPORTANT RULES:
-
-1. Use ONLY the information provided in the
-   web research above.
-
-2. Do not invent facts.
-
-3. Do not invent statistics.
-
-4. Do not invent URLs.
-
-5. Do not claim that you searched the web yourself.
-
-6. If information is insufficient, clearly say so.
-
-7. Keep the report factual.
-
-8. Include relevant source URLs.
-
-9. Use Markdown.
-
-Use this exact structure:
-
-# Executive Summary
-
-# Introduction
-
-# Key Findings
-
-# Detailed Analysis
-
-# Current Developments
-
-# Challenges and Limitations
-
-# Conclusion
-
-# Sources
-
-Under Sources, list the sources that were actually
-provided in the web research.
+Do not search the web yourself.
+Do not invent information.
+Use only the supplied sources.
 """,
 
         expected_output=(
-            "A complete Markdown research report "
-            "with factual findings and source URLs."
+            "A concise factual analysis "
+            "of the supplied web research."
         ),
 
         agent=researcher
     )
 
-    # -----------------------------------------------------
-    # Crew
-    # -----------------------------------------------------
-
     crew = Crew(
 
         agents=[researcher],
 
-        tasks=[research_task],
+        tasks=[task],
 
         process=Process.sequential,
 
         verbose=False
     )
 
-    return crew, research_context
-
-
-# =========================================================
-# GENERATE REPORT
-# =========================================================
-
-def generate_report(
-    model_name: str,
-    topic: str
-) -> str:
-    """
-    Generate the final research report.
-
-    Flow:
-
-    DuckDuckGo
-        ↓
-    Search Results
-        ↓
-    Single CrewAI Agent
-        ↓
-    Report Planning
-        ↓
-    Direct Groq API
-        ↓
-    Final Report
-    """
-
-    crew, research_context = create_research_crew(
-        model_name=model_name,
-        topic=topic
-    )
-
-    # -----------------------------------------------------
-    # CrewAI runs the single agent
-    # -----------------------------------------------------
-
     crew_result = crew.kickoff()
 
-    agent_instructions = str(
-        crew_result.raw
-        if hasattr(crew_result, "raw")
-        else crew_result
+    crew_analysis = getattr(
+        crew_result,
+        "raw",
+        str(crew_result)
     )
 
     # -----------------------------------------------------
-    # Final Groq generation
+    # STEP 3 — Direct Groq final report
     # -----------------------------------------------------
 
-    system_prompt = """
-You are a professional AI research writer.
-
-Create accurate, clear and well-structured
-research reports.
-
-Never fabricate facts, statistics or URLs.
-
-Use only the research information supplied
-by the application.
-"""
-
-    user_prompt = f"""
-TOPIC:
-
-{topic}
-
-CREWAI RESEARCH ANALYSIS:
-
-{agent_instructions}
-
-WEB SOURCES:
-
-{research_context}
-
-Now produce the final research report.
-
-Use these sections:
-
-# Executive Summary
-
-# Introduction
-
-# Key Findings
-
-# Detailed Analysis
-
-# Current Developments
-
-# Challenges and Limitations
-
-# Conclusion
-
-# Sources
-
-For Sources, provide numbered source titles
-and their actual URLs.
-"""
-
-    return call_groq(
+    final_report = call_groq(
         model_name=model_name,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt
-        )
+        topic=topic,
+        research=research_context,
+        crew_analysis=crew_analysis
+    )
+
+    return final_report
