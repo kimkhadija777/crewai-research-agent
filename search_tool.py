@@ -1,80 +1,47 @@
-from typing import Type
-
 from crewai.tools import BaseTool
 from ddgs import DDGS
 from pydantic import BaseModel, Field
 
 
-class SearchInput(BaseModel):
-    query: str = Field(
-        ...,
-        description="The web search query."
-    )
+class DuckDuckGoSearchInput(BaseModel):
+    query: str = Field(..., description="The web search query")
 
 
 class DuckDuckGoSearchTool(BaseTool):
     name: str = "DuckDuckGo Web Search"
-
     description: str = (
-        "Search the internet using DuckDuckGo. "
-        "Use this tool to find relevant and recent "
-        "information about the research topic."
+        "Search the web with DuckDuckGo and return "
+        "titles, snippets, and URLs."
     )
-
-    args_schema: Type[BaseModel] = SearchInput
+    args_schema: type[BaseModel] = DuckDuckGoSearchInput
 
     def _run(self, query: str) -> str:
-        """Search DuckDuckGo and return formatted results."""
-
-        query = query.strip()
-
-        if not query:
-            return "No search query was provided."
-
         try:
-            search_client = DDGS()
-
-            results = search_client.text(
+            results = DDGS().text(
                 query,
-                max_results=8,
+                max_results=8
             )
 
             if not results:
-                return "No search results were found."
+                return "No search results found."
 
             output = []
 
-            for index, result in enumerate(results, start=1):
-
-                title = result.get(
-                    "title",
-                    "Untitled",
-                )
-
-                description = result.get(
+            for i, item in enumerate(results, start=1):
+                title = item.get("title", "Untitled")
+                body = item.get(
                     "body",
-                    "No description available.",
+                    "No description available"
                 )
-
-                url = result.get(
-                    "href",
-                    "",
-                )
+                url = item.get("href", "")
 
                 output.append(
-                    f"""
-SOURCE {index}
-Title: {title}
-Description: {description}
-URL: {url}
-""".strip()
+                    f"[{i}] {title}\n"
+                    f"{body}\n"
+                    f"URL: {url}"
                 )
 
             return "\n\n".join(output)
 
-        except Exception as error:
-
-            return (
-                "DuckDuckGo search failed. "
-                f"Error: {str(error)}"
-            )
+        except Exception as exc:
+            return f"Web search failed: {exc}"
