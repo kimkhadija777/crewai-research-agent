@@ -5,9 +5,9 @@ import streamlit as st
 from research_agent import create_research_crew
 
 
-# ==================================================
-# PAGE CONFIG
-# ==================================================
+# --------------------------------------------------
+# Page configuration
+# --------------------------------------------------
 
 st.set_page_config(
     page_title="AI Research Agent",
@@ -16,83 +16,21 @@ st.set_page_config(
 )
 
 
-# ==================================================
-# CUSTOM CSS
-# ==================================================
+# --------------------------------------------------
+# Header
+# --------------------------------------------------
 
-st.markdown(
-    """
-    <style>
+st.title("🔎 AI Research Agent")
 
-    .main-title {
-        font-size: 42px;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }
-
-    .subtitle {
-        font-size: 18px;
-        color: #666666;
-        margin-bottom: 25px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.caption(
+    "Research a topic using "
+    "CrewAI + DuckDuckGo + Groq"
 )
 
 
-# ==================================================
-# HEADER
-# ==================================================
-
-st.markdown(
-    '<div class="main-title">🔎 AI Research Agent</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="subtitle">'
-    "Research a topic using CrewAI + DuckDuckGo + Groq"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-
-# ==================================================
-# LOAD API KEY
-# ==================================================
-
-try:
-
-    api_key = st.secrets["GROQ_API_KEY"]
-
-except Exception:
-
-    api_key = os.getenv("GROQ_API_KEY")
-
-
-if not api_key:
-
-    st.error(
-        "❌ GROQ_API_KEY is not configured."
-    )
-
-    st.info(
-        "Add GROQ_API_KEY in Streamlit Cloud → "
-        "Settings → Secrets."
-    )
-
-    st.stop()
-
-
-# Make API key available to CrewAI
-os.environ["GROQ_API_KEY"] = api_key
-
-
-# ==================================================
-# SIDEBAR
-# ==================================================
+# --------------------------------------------------
+# Sidebar
+# --------------------------------------------------
 
 with st.sidebar:
 
@@ -100,26 +38,19 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Choose Groq Model",
-
-        options=[
+        [
             "openai/gpt-oss-120b",
             "qwen/qwen3.8-27b",
         ],
-
-        index=0,
     )
-
-    st.divider()
 
     st.markdown("### 🧠 Architecture")
 
-    st.write("🔹 Streamlit")
-    st.write("🔹 CrewAI")
-    st.write("🔹 Single Agent")
-    st.write("🔹 DuckDuckGo")
-    st.write("🔹 Groq")
-
-    st.divider()
+    st.markdown("🔹 Streamlit")
+    st.markdown("🔹 CrewAI")
+    st.markdown("🔹 Single Agent")
+    st.markdown("🔹 DuckDuckGo")
+    st.markdown("🔹 Groq")
 
     st.caption(
         "The agent searches the web before "
@@ -127,110 +58,120 @@ with st.sidebar:
     )
 
 
-# ==================================================
-# TOPIC INPUT
-# ==================================================
+# --------------------------------------------------
+# API Key
+# --------------------------------------------------
 
-st.subheader("📝 Research Topic")
+api_key = st.secrets.get(
+    "GROQ_API_KEY",
+    os.getenv("GROQ_API_KEY")
+)
+
+
+if api_key:
+
+    os.environ["GROQ_API_KEY"] = api_key
+
+else:
+
+    st.error(
+        "GROQ_API_KEY is missing. "
+        "Add it in Streamlit Secrets."
+    )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# Research Topic
+# --------------------------------------------------
 
 topic = st.text_area(
-    "What would you like me to research?",
+    "📝 Research Topic",
 
     placeholder=(
-        "Example: "
-        "Impact of Generative AI on Software Development"
+        "What would you like me to research?"
     ),
 
     height=120,
 )
 
 
-# ==================================================
-# RESEARCH BUTTON
-# ==================================================
+# --------------------------------------------------
+# Generate Report
+# --------------------------------------------------
 
-start_research = st.button(
-    "🔎 Start Research",
-
+if st.button(
+    "🔍 Generate Research Report",
     type="primary",
-
     use_container_width=True,
-)
+):
 
+    topic = topic.strip()
 
-# ==================================================
-# RUN AGENT
-# ==================================================
-
-if start_research:
-
-    if not topic.strip():
+    if not topic:
 
         st.warning(
-            "⚠️ Please enter a research topic."
+            "Please enter a research topic first."
         )
 
         st.stop()
 
-    try:
+    with st.spinner(
+        "🔎 Searching the web and preparing "
+        "your report..."
+    ):
 
-        with st.spinner(
-            "🔎 Research agent is working..."
-        ):
+        try:
 
+            # Create CrewAI crew
             crew = create_research_crew(
-                model_name=model_name
+                model_name
             )
 
+            # Run research
             result = crew.kickoff(
                 inputs={
-                    "topic": topic.strip()
+                    "topic": topic
                 }
             )
 
-        # Convert CrewAI result to text
-        report = str(result)
+            # Get final report
+            report = getattr(
+                result,
+                "raw",
+                str(result)
+            )
 
-        # ==========================================
-        # DISPLAY REPORT
-        # ==========================================
+            st.success(
+                "Research report generated successfully!"
+            )
 
-        st.success(
-            "✅ Research completed successfully!"
-        )
+            # Display report
+            st.markdown(report)
 
-        st.divider()
+            # Download button
+            st.download_button(
+                "⬇️ Download Report",
 
-        st.subheader("📑 Research Report")
+                data=report,
 
-        st.markdown(report)
+                file_name="research_report.md",
 
-        # ==========================================
-        # DOWNLOAD
-        # ==========================================
+                mime="text/markdown",
 
-        st.download_button(
-            label="⬇️ Download Report",
+                use_container_width=True,
+            )
 
-            data=report,
+        except Exception as exc:
 
-            file_name="research_report.md",
+            st.error(
+                "❌ The research agent encountered "
+                "an error."
+            )
 
-            mime="text/markdown",
+            with st.expander(
+                "Show technical error"
+            ):
 
-            use_container_width=True,
-        )
-
-    except Exception as error:
-
-        st.error(
-            "❌ The research agent encountered an error."
-        )
-
-        with st.expander(
-            "Show technical error"
-        ):
-
-            st.code(
-                str(error)
-    )
+                st.code(str(exc))
