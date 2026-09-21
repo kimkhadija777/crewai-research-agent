@@ -4,118 +4,161 @@ from crewai import Agent, Crew, LLM, Process, Task
 from search_tool import DuckDuckGoSearchTool
 
 
-def create_research_crew(model_name: str):
+def create_research_crew(model_name: str = "openai/gpt-oss-120b"):
+    """
+    Create a single-agent AI research crew using:
+    - CrewAI
+    - Groq OpenAI-compatible API
+    - DuckDuckGo web search
+    """
 
+    # --------------------------------------------------
     # Get Groq API key
+    # --------------------------------------------------
+
     api_key = os.getenv("GROQ_API_KEY")
 
     if not api_key:
         raise ValueError(
-            "GROQ_API_KEY is not configured."
+            "GROQ_API_KEY is missing. "
+            "Please add it to Streamlit Secrets."
         )
 
-    # Groq model through LiteLLM
-    llm = LLM(
-    model="openai/gpt-oss-120b",
-    api_key=api_key,
-    base_url="https://api.groq.com/openai/v1",
-    temperature=0.2,
-    )
-        
-        
-    
+    # --------------------------------------------------
+    # Clean model name
+    # --------------------------------------------------
 
+    model_name = model_name.strip()
+
+    # Make sure the full Groq model ID is preserved
+    if model_name == "gpt-oss-120b":
+        model_name = "openai/gpt-oss-120b"
+
+    # --------------------------------------------------
+    # Groq LLM
+    # --------------------------------------------------
+    #
+    # IMPORTANT:
+    # Do NOT use:
+    #     groq/openai/gpt-oss-120b
+    #
+    # We use Groq's OpenAI-compatible endpoint directly.
+    #
+
+    llm = LLM(
+        model=model_name,
+        api_key=api_key,
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.2,
+    )
+
+    # --------------------------------------------------
     # DuckDuckGo search tool
+    # --------------------------------------------------
+
     search_tool = DuckDuckGoSearchTool()
 
-    # Single research agent
+    # --------------------------------------------------
+    # Single Research Agent
+    # --------------------------------------------------
+
     researcher = Agent(
-        role="AI Researcher",
+        role="AI Research Analyst",
 
         goal=(
-            "Research the user's topic using current web "
-            "sources and produce an accurate, "
-            "well-structured report."
+            "Research the user's topic using web search "
+            "and create an accurate, structured and "
+            "easy-to-understand research report."
         ),
 
         backstory=(
-            "You are a careful research analyst. "
-            "You search the web before writing, "
-            "cross-check important claims when possible, "
-            "distinguish facts from opinions, and always "
-            "include source URLs."
+            "You are a careful AI research analyst. "
+            "You search the web before writing your report. "
+            "You use relevant and credible sources, "
+            "avoid making up information, and provide "
+            "source URLs for the information you use."
         ),
 
         tools=[search_tool],
 
         llm=llm,
 
-        verbose=False,
-
         allow_delegation=False,
 
         max_iter=8,
+
+        verbose=False,
     )
 
-    # Research task
-    task = Task(
-        description=(
-            "Research this topic: {topic}\n\n"
+    # --------------------------------------------------
+    # Research Task
+    # --------------------------------------------------
 
-            "Instructions:\n"
+    research_task = Task(
+        description="""
+Research the following topic:
 
-            "1. Use the DuckDuckGo search tool before "
-            "writing the report.\n"
+{topic}
 
-            "2. Search multiple queries when useful.\n"
+Follow these instructions carefully:
 
-            "3. Prefer recent, credible, and relevant "
-            "sources.\n"
+1. Search the web using the DuckDuckGo search tool
+   before writing the report.
 
-            "4. Do not invent facts, statistics, "
-            "citations, or URLs.\n"
+2. Use multiple searches when necessary.
 
-            "5. Clearly distinguish established facts "
-            "from claims or opinions.\n"
+3. Prefer recent, reliable and relevant sources.
 
-            "6. Include source URLs for important "
-            "information you use.\n\n"
+4. Do not invent facts, statistics, citations or URLs.
 
-            "Return the report using this structure:\n\n"
+5. Clearly separate established information from
+   opinions or claims.
 
-            "# Executive Summary\n"
+6. Use the information found through web search
+   to prepare the report.
 
-            "# Introduction\n"
+7. Include the URLs of the sources actually used.
 
-            "# Key Findings\n"
+8. Write the final answer in clear Markdown.
 
-            "# Detailed Analysis\n"
+Use exactly this structure:
 
-            "# Current Developments\n"
+# Executive Summary
 
-            "# Challenges and Limitations\n"
+# Introduction
 
-            "# Conclusion\n"
+# Key Findings
 
-            "# Sources\n\n"
+# Detailed Analysis
 
-            "For Sources, provide a numbered list of "
-            "the URLs actually used."
-        ),
+# Current Developments
 
-        expected_output=(
-            "A factual, structured research report "
-            "with source URLs."
-        ),
+# Challenges and Limitations
+
+# Conclusion
+
+# Sources
+
+Under # Sources, provide a numbered list containing
+the title/name of each important source and its URL.
+""",
+
+        expected_output="""
+A complete factual research report in Markdown format
+with clear sections and source URLs.
+""",
 
         agent=researcher,
     )
 
-    # Single-agent Crew
+    # --------------------------------------------------
+    # Single-Agent Crew
+    # --------------------------------------------------
+
     crew = Crew(
         agents=[researcher],
 
-        tasks=[task],
+        tasks=[research_task],
 
         process=Process.sequential,
 
