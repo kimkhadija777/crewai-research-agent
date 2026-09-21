@@ -4,12 +4,12 @@ import streamlit as st
 
 from research_agent import (
     SUPPORTED_MODELS,
-    generate_report,
+    generate_report
 )
 
 
 # =========================================================
-# PAGE
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -41,30 +41,48 @@ with st.sidebar:
 
     model_label = st.selectbox(
         "Choose Groq Model",
-        list(SUPPORTED_MODELS.keys())
+        list(
+            SUPPORTED_MODELS.keys()
+        )
     )
 
     model_name = SUPPORTED_MODELS[
         model_label
     ]
 
-    st.markdown("### 🧠 Architecture")
+    st.markdown(
+        "### 🧠 Architecture"
+    )
 
-    st.markdown("🔹 Streamlit")
-    st.markdown("🔹 CrewAI")
-    st.markdown("🔹 Single Agent")
-    st.markdown("🔹 DuckDuckGo")
-    st.markdown("🔹 Groq")
+    st.markdown(
+        "🔹 Streamlit"
+    )
 
-    st.info(
-        "DuckDuckGo collects web sources first. "
-        "The single CrewAI agent analyzes them, "
-        "and Groq generates the final report."
+    st.markdown(
+        "🔹 CrewAI"
+    )
+
+    st.markdown(
+        "🔹 Single Agent"
+    )
+
+    st.markdown(
+        "🔹 DuckDuckGo"
+    )
+
+    st.markdown(
+        "🔹 Groq"
+    )
+
+    st.caption(
+        "DuckDuckGo searches first. "
+        "CrewAI analyzes the sources. "
+        "Groq generates the final report."
     )
 
 
 # =========================================================
-# GROQ API KEY
+# API KEY
 # =========================================================
 
 api_key = st.secrets.get(
@@ -79,15 +97,12 @@ if not api_key:
         "❌ GROQ_API_KEY is missing."
     )
 
-    st.info(
-        "Add GROQ_API_KEY in "
-        "Streamlit → Settings → Secrets."
-    )
-
     st.stop()
 
 
-os.environ["GROQ_API_KEY"] = api_key
+os.environ[
+    "GROQ_API_KEY"
+] = api_key
 
 
 # =========================================================
@@ -106,7 +121,7 @@ topic = st.text_area(
 
 
 # =========================================================
-# BUTTON
+# GENERATE
 # =========================================================
 
 if st.button(
@@ -129,40 +144,31 @@ if st.button(
 
     try:
 
-        # ---------------------------------------------
-        # Search
-        # ---------------------------------------------
-
         with st.spinner(
             "🔎 Searching DuckDuckGo..."
         ):
 
-            # Search + CrewAI + Groq
             report = generate_report(
                 model_name=model_name,
                 topic=topic
             )
 
-        # ---------------------------------------------
-        # Result
-        # ---------------------------------------------
-
         st.success(
             "✅ Research report generated!"
         )
 
-        st.markdown(report)
-
-        # ---------------------------------------------
-        # Download
-        # ---------------------------------------------
+        st.markdown(
+            report
+        )
 
         st.download_button(
-            label="⬇️ Download Report",
+            "⬇️ Download Report",
 
             data=report,
 
-            file_name="research_report.md",
+            file_name=(
+                "research_report.md"
+            ),
 
             mime="text/markdown",
 
