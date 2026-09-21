@@ -3,25 +3,25 @@ import os
 import streamlit as st
 
 from research_agent import (
-    create_research_crew,
     SUPPORTED_MODELS,
+    generate_report,
 )
 
 
-# ---------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------
+# =========================================================
+# PAGE
+# =========================================================
 
 st.set_page_config(
     page_title="AI Research Agent",
     page_icon="🔎",
-    layout="wide",
+    layout="wide"
 )
 
 
-# ---------------------------------------------------------
-# Header
-# ---------------------------------------------------------
+# =========================================================
+# HEADER
+# =========================================================
 
 st.title("🔎 AI Research Agent")
 
@@ -31,9 +31,9 @@ st.caption(
 )
 
 
-# ---------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------
+# =========================================================
+# SIDEBAR
+# =========================================================
 
 with st.sidebar:
 
@@ -41,7 +41,7 @@ with st.sidebar:
 
     model_label = st.selectbox(
         "Choose Groq Model",
-        list(SUPPORTED_MODELS.keys()),
+        list(SUPPORTED_MODELS.keys())
     )
 
     model_name = SUPPORTED_MODELS[
@@ -56,16 +56,16 @@ with st.sidebar:
     st.markdown("🔹 DuckDuckGo")
     st.markdown("🔹 Groq")
 
-    st.caption(
-        "DuckDuckGo searches the web first. "
-        "The single CrewAI agent then analyzes "
-        "the collected results."
+    st.info(
+        "DuckDuckGo collects web sources first. "
+        "The single CrewAI agent analyzes them, "
+        "and Groq generates the final report."
     )
 
 
-# ---------------------------------------------------------
-# API Key
-# ---------------------------------------------------------
+# =========================================================
+# GROQ API KEY
+# =========================================================
 
 api_key = st.secrets.get(
     "GROQ_API_KEY",
@@ -76,8 +76,12 @@ api_key = st.secrets.get(
 if not api_key:
 
     st.error(
-        "GROQ_API_KEY is missing. "
-        "Please add it in Streamlit Secrets."
+        "❌ GROQ_API_KEY is missing."
+    )
+
+    st.info(
+        "Add GROQ_API_KEY in "
+        "Streamlit → Settings → Secrets."
     )
 
     st.stop()
@@ -86,9 +90,9 @@ if not api_key:
 os.environ["GROQ_API_KEY"] = api_key
 
 
-# ---------------------------------------------------------
-# Research topic
-# ---------------------------------------------------------
+# =========================================================
+# TOPIC
+# =========================================================
 
 topic = st.text_area(
     "📝 Research Topic",
@@ -97,18 +101,20 @@ topic = st.text_area(
         "What would you like me to research?"
     ),
 
-    height=120,
+    height=120
 )
 
 
-# ---------------------------------------------------------
-# Generate report
-# ---------------------------------------------------------
+# =========================================================
+# BUTTON
+# =========================================================
 
 if st.button(
     "🔍 Generate Research Report",
+
     type="primary",
-    use_container_width=True,
+
+    use_container_width=True
 ):
 
     topic = topic.strip()
@@ -116,39 +122,40 @@ if st.button(
     if not topic:
 
         st.warning(
-            "Please enter a research topic first."
+            "Please enter a research topic."
         )
 
         st.stop()
 
     try:
 
+        # ---------------------------------------------
+        # Search
+        # ---------------------------------------------
+
         with st.spinner(
             "🔎 Searching DuckDuckGo..."
         ):
 
-            crew = create_research_crew(
+            # Search + CrewAI + Groq
+            report = generate_report(
                 model_name=model_name,
-                topic=topic,
+                topic=topic
             )
 
-        with st.spinner(
-            "🧠 CrewAI is preparing your report..."
-        ):
-
-            result = crew.kickoff()
-
-        report = getattr(
-            result,
-            "raw",
-            str(result)
-        )
+        # ---------------------------------------------
+        # Result
+        # ---------------------------------------------
 
         st.success(
-            "✅ Research report generated successfully!"
+            "✅ Research report generated!"
         )
 
         st.markdown(report)
+
+        # ---------------------------------------------
+        # Download
+        # ---------------------------------------------
 
         st.download_button(
             label="⬇️ Download Report",
@@ -159,7 +166,7 @@ if st.button(
 
             mime="text/markdown",
 
-            use_container_width=True,
+            use_container_width=True
         )
 
     except Exception as exc:
@@ -175,4 +182,4 @@ if st.button(
             st.code(
                 str(exc),
                 language="text"
-    )
+            )
