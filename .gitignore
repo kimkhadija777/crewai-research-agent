@@ -5,7 +5,7 @@ __pycache__/
 .env.*
 .streamlit/secrets.toml
 
-venv/
 .venv/
+venv/
 
 .DS_Store
