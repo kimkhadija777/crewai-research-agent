@@ -16,10 +16,14 @@ def create_research_crew(model_name: str):
 
     # Groq model through LiteLLM
     llm = LLM(
-        model=f"groq/{model_name}",
-        api_key=api_key,
-        temperature=0.2,
+    model="openai/gpt-oss-120b",
+    api_key=api_key,
+    base_url="https://api.groq.com/openai/v1",
+    temperature=0.2,
     )
+        
+        
+    
 
     # DuckDuckGo search tool
     search_tool = DuckDuckGoSearchTool()
