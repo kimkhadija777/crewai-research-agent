@@ -1,55 +1,48 @@
 import os
 
 from crewai import Agent, Crew, LLM, Process, Task
-
 from search_tool import DuckDuckGoSearchTool
 
 
 def create_research_crew(model_name: str):
-    """
-    Create a single-agent research crew.
-    """
 
+    # Get Groq API key
     api_key = os.getenv("GROQ_API_KEY")
 
     if not api_key:
         raise ValueError(
-            "GROQ_API_KEY is missing."
+            "GROQ_API_KEY is not configured."
         )
 
+    # Groq model through LiteLLM
     llm = LLM(
         model=f"groq/{model_name}",
         api_key=api_key,
         temperature=0.2,
     )
 
+    # DuckDuckGo search tool
     search_tool = DuckDuckGoSearchTool()
 
-    # --------------------------------------------------
-    # SINGLE AGENT
-    # --------------------------------------------------
-
+    # Single research agent
     researcher = Agent(
-        role="AI Research Analyst",
+        role="AI Researcher",
 
         goal=(
-            "Research the user's topic using web search, "
-            "analyze the available information, cross-check "
-            "important claims, and produce a factual "
-            "well-structured research report."
+            "Research the user's topic using current web "
+            "sources and produce an accurate, "
+            "well-structured report."
         ),
 
         backstory=(
-            "You are an experienced research analyst. "
-            "You carefully search for relevant information, "
-            "prefer credible sources, compare information "
-            "from multiple sources, and clearly identify "
-            "uncertainty or conflicting information."
+            "You are a careful research analyst. "
+            "You search the web before writing, "
+            "cross-check important claims when possible, "
+            "distinguish facts from opinions, and always "
+            "include source URLs."
         ),
 
-        tools=[
-            search_tool
-        ],
+        tools=[search_tool],
 
         llm=llm,
 
@@ -60,138 +53,65 @@ def create_research_crew(model_name: str):
         max_iter=8,
     )
 
-    # --------------------------------------------------
-    # RESEARCH TASK
-    # --------------------------------------------------
+    # Research task
+    task = Task(
+        description=(
+            "Research this topic: {topic}\n\n"
 
-    research_task = Task(
-        description="""
-Research the following topic:
+            "Instructions:\n"
 
-{topic}
+            "1. Use the DuckDuckGo search tool before "
+            "writing the report.\n"
 
-Your job is to conduct web-based research and create
-a useful research report.
+            "2. Search multiple queries when useful.\n"
 
-Follow these steps:
+            "3. Prefer recent, credible, and relevant "
+            "sources.\n"
 
-1. Understand the topic.
+            "4. Do not invent facts, statistics, "
+            "citations, or URLs.\n"
 
-2. Break the topic into useful search questions.
+            "5. Clearly distinguish established facts "
+            "from claims or opinions.\n"
 
-3. Use the DuckDuckGo Web Search tool to search for
-   relevant information.
+            "6. Include source URLs for important "
+            "information you use.\n\n"
 
-4. Perform multiple searches when necessary.
+            "Return the report using this structure:\n\n"
 
-5. Look for information from several sources.
+            "# Executive Summary\n"
 
-6. Prefer reliable sources such as:
-   - official organizations
-   - universities
-   - research institutions
-   - government websites
-   - established publications
-   - primary sources
+            "# Introduction\n"
 
-7. Compare information from different sources.
+            "# Key Findings\n"
 
-8. Do not invent facts.
+            "# Detailed Analysis\n"
 
-9. Do not invent statistics.
+            "# Current Developments\n"
 
-10. Do not invent quotations.
+            "# Challenges and Limitations\n"
 
-11. Do not invent source URLs.
+            "# Conclusion\n"
 
-12. If sources disagree, explain the disagreement.
+            "# Sources\n\n"
 
-13. If information cannot be verified from the search
-    results, clearly say that it could not be verified.
-
-14. Use recent information when the topic requires it.
-
-15. Write the final report in clear Markdown.
-
-The report must contain:
-
-# Research Report
-
-## Executive Summary
-
-Provide a concise overview of the research.
-
-## Introduction
-
-Explain the topic and its importance.
-
-## Key Findings
-
-Present the most important findings.
-
-## Detailed Analysis
-
-Explain the topic in depth using the information
-found during research.
-
-Use appropriate subsections when useful.
-
-## Current Developments
-
-Discuss recent developments when relevant.
-
-## Challenges and Limitations
-
-Discuss important limitations, uncertainties,
-or challenges.
-
-## Conclusion
-
-Summarize the main findings.
-
-## Sources
-
-List the sources used during research.
-
-For every source include:
-
-- Source title
-- URL
-
-IMPORTANT:
-
-Only include URLs returned by the search tool.
-
-Do not fabricate URLs.
-
-Do not claim that you directly visited or verified
-a webpage unless the available tool actually provided
-that information.
-""",
+            "For Sources, provide a numbered list of "
+            "the URLs actually used."
+        ),
 
         expected_output=(
-            "A factual, well-structured Markdown research "
-            "report containing an executive summary, "
-            "introduction, key findings, detailed analysis, "
-            "current developments, challenges and limitations, "
-            "conclusion, and source URLs."
+            "A factual, structured research report "
+            "with source URLs."
         ),
 
         agent=researcher,
     )
 
-    # --------------------------------------------------
-    # CREW
-    # --------------------------------------------------
-
+    # Single-agent Crew
     crew = Crew(
-        agents=[
-            researcher
-        ],
+        agents=[researcher],
 
-        tasks=[
-            research_task
-        ],
+        tasks=[task],
 
         process=Process.sequential,
 
