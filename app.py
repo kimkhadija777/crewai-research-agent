@@ -2,12 +2,15 @@ import os
 
 import streamlit as st
 
-from research_agent import create_research_crew
+from research_agent import (
+    create_research_crew,
+    SUPPORTED_MODELS,
+)
 
 
-# --------------------------------------------------
+# ---------------------------------------------------------
 # Page configuration
-# --------------------------------------------------
+# ---------------------------------------------------------
 
 st.set_page_config(
     page_title="AI Research Agent",
@@ -16,9 +19,9 @@ st.set_page_config(
 )
 
 
-# --------------------------------------------------
+# ---------------------------------------------------------
 # Header
-# --------------------------------------------------
+# ---------------------------------------------------------
 
 st.title("🔎 AI Research Agent")
 
@@ -28,27 +31,22 @@ st.caption(
 )
 
 
-# --------------------------------------------------
+# ---------------------------------------------------------
 # Sidebar
-# --------------------------------------------------
+# ---------------------------------------------------------
 
 with st.sidebar:
 
     st.header("⚙️ Settings")
 
-    model_name = st.selectbox(
-    "Choose Groq Model",
-    [
-        "openai/gpt-oss-120b",
-        "qwen/qwen3.8-27b",
-    ],
+    model_label = st.selectbox(
+        "Choose Groq Model",
+        list(SUPPORTED_MODELS.keys()),
     )
-        
-        
-            
-            
-        
-    
+
+    model_name = SUPPORTED_MODELS[
+        model_label
+    ]
 
     st.markdown("### 🧠 Architecture")
 
@@ -59,14 +57,15 @@ with st.sidebar:
     st.markdown("🔹 Groq")
 
     st.caption(
-        "The agent searches the web before "
-        "writing the research report."
+        "DuckDuckGo searches the web first. "
+        "The single CrewAI agent then analyzes "
+        "the collected results."
     )
 
 
-# --------------------------------------------------
+# ---------------------------------------------------------
 # API Key
-# --------------------------------------------------
+# ---------------------------------------------------------
 
 api_key = st.secrets.get(
     "GROQ_API_KEY",
@@ -74,23 +73,22 @@ api_key = st.secrets.get(
 )
 
 
-if api_key:
-
-    os.environ["GROQ_API_KEY"] = api_key
-
-else:
+if not api_key:
 
     st.error(
         "GROQ_API_KEY is missing. "
-        "Add it in Streamlit Secrets."
+        "Please add it in Streamlit Secrets."
     )
 
     st.stop()
 
 
-# --------------------------------------------------
-# Research Topic
-# --------------------------------------------------
+os.environ["GROQ_API_KEY"] = api_key
+
+
+# ---------------------------------------------------------
+# Research topic
+# ---------------------------------------------------------
 
 topic = st.text_area(
     "📝 Research Topic",
@@ -103,9 +101,9 @@ topic = st.text_area(
 )
 
 
-# --------------------------------------------------
-# Generate Report
-# --------------------------------------------------
+# ---------------------------------------------------------
+# Generate report
+# ---------------------------------------------------------
 
 if st.button(
     "🔍 Generate Research Report",
@@ -123,61 +121,58 @@ if st.button(
 
         st.stop()
 
-    with st.spinner(
-        "🔎 Searching the web and preparing "
-        "your report..."
-    ):
+    try:
 
-        try:
+        with st.spinner(
+            "🔎 Searching DuckDuckGo..."
+        ):
 
-            # Create CrewAI crew
             crew = create_research_crew(
-                model_name
+                model_name=model_name,
+                topic=topic,
             )
 
-            # Run research
-            result = crew.kickoff(
-                inputs={
-                    "topic": topic
-                }
-            )
+        with st.spinner(
+            "🧠 CrewAI is preparing your report..."
+        ):
 
-            # Get final report
-            report = getattr(
-                result,
-                "raw",
-                str(result)
-            )
+            result = crew.kickoff()
 
-            st.success(
-                "Research report generated successfully!"
-            )
+        report = getattr(
+            result,
+            "raw",
+            str(result)
+        )
 
-            # Display report
-            st.markdown(report)
+        st.success(
+            "✅ Research report generated successfully!"
+        )
 
-            # Download button
-            st.download_button(
-                "⬇️ Download Report",
+        st.markdown(report)
 
-                data=report,
+        st.download_button(
+            label="⬇️ Download Report",
 
-                file_name="research_report.md",
+            data=report,
 
-                mime="text/markdown",
+            file_name="research_report.md",
 
-                use_container_width=True,
-            )
+            mime="text/markdown",
 
-        except Exception as exc:
+            use_container_width=True,
+        )
 
-            st.error(
-                "❌ The research agent encountered "
-                "an error."
-            )
+    except Exception as exc:
 
-            with st.expander(
-                "Show technical error"
-            ):
+        st.error(
+            "❌ The research agent encountered an error."
+        )
 
-                st.code(str(exc))
+        with st.expander(
+            "Show technical error"
+        ):
+
+            st.code(
+                str(exc),
+                language="text"
+    )
